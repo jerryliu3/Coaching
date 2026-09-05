@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { checklistFor } from "@/lib/checklists";
+import { guidedTasksForStep } from "@/lib/guided-flow";
 import { activeReferenceSection, referenceSpans, resolveHighlightRanges, type ReferenceSection } from "@/lib/reference-resume";
-import type { RevisionKind, RevisionTree, WorkflowStep } from "@/lib/types";
+import type { RevisionKind, RevisionTree, StepCheck, StepCheckStatus, WorkflowStep } from "@/lib/types";
 
 type ReferenceData = {
   text: string;
@@ -11,7 +12,7 @@ type ReferenceData = {
   sections: ReferenceSection[];
 };
 
-type SidebarTab = "reference" | "checklist";
+type SidebarTab = "reference" | "checklist" | "guided";
 
 export function EditorSidebar({
   resumeId,
@@ -19,12 +20,14 @@ export function EditorSidebar({
   revisionKind,
   tree,
   width,
+  onTreeReload,
 }: {
   resumeId: string;
   step: WorkflowStep;
   revisionKind: RevisionKind;
   tree: RevisionTree;
   width: number;
+  onTreeReload: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<SidebarTab>("reference");
   const [data, setData] = useState<ReferenceData | null>(null);
@@ -69,6 +72,16 @@ export function EditorSidebar({
   );
 
   const checklist = checklistFor(step, revisionKind);
+  const guidedTasks = useMemo(() => guidedTasksForStep(step, tree), [step, tree]);
+  const checkMap = useMemo(() => {
+    const map = new Map<string, StepCheck>();
+    for (const check of tree.checks ?? []) {
+      if (check.step_id !== step.id) continue;
+      map.set(check.task_key, check);
+    }
+    return map;
+  }, [step.id, tree.checks]);
+  const [savingTask, setSavingTask] = useState<string | null>(null);
 
   useEffect(() => {
     if (tab !== "reference") return;
@@ -92,6 +105,9 @@ export function EditorSidebar({
         </SidebarTabButton>
         <SidebarTabButton active={tab === "checklist"} onClick={() => setTab("checklist")}>
           Keep in mind
+        </SidebarTabButton>
+        <SidebarTabButton active={tab === "guided"} onClick={() => setTab("guided")}>
+          Guided flow
         </SidebarTabButton>
       </div>
 
@@ -128,7 +144,7 @@ export function EditorSidebar({
             </div>
           </div>
         </>
-      ) : (
+      ) : tab === "checklist" ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <ul className="space-y-3 p-4 text-sm leading-relaxed text-muted-foreground">
             {checklist.map((item) => (
@@ -139,8 +155,99 @@ export function EditorSidebar({
             ))}
           </ul>
         </div>
+      ) : (
+        <GuidedFlowPanel
+          revisionId={tree.revision.id}
+          stepId={step.id}
+          tasks={guidedTasks}
+          checkMap={checkMap}
+          savingTask={savingTask}
+          onSave={async (taskKey, status) => {
+            setSavingTask(taskKey);
+            await fetch(`/api/revisions/${tree.revision.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ check: { stepId: step.id, taskKey, status } }),
+            });
+            await onTreeReload();
+            setSavingTask(null);
+          }}
+        />
       )}
     </aside>
+  );
+}
+
+function GuidedFlowPanel({
+  revisionId,
+  stepId,
+  tasks,
+  checkMap,
+  savingTask,
+  onSave,
+}: {
+  revisionId: string;
+  stepId: string;
+  tasks: { key: string; prompt: string; hint?: string }[];
+  checkMap: Map<string, StepCheck>;
+  savingTask: string | null;
+  onSave: (taskKey: string, status: StepCheckStatus) => Promise<void>;
+}) {
+  const completed = tasks.filter((task) => checkMap.get(task.key)?.status === "yes").length;
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+      <div className="mb-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        {completed}/{tasks.length} checks confirmed for `{stepId}`.
+      </div>
+      <div className="space-y-3">
+        {tasks.map((task) => {
+          const status = checkMap.get(task.key)?.status ?? "skip";
+          const busy = savingTask === task.key;
+          return (
+            <div key={`${revisionId}:${task.key}`} className="rounded-lg border border-border/70 bg-background p-3">
+              <p className="text-sm font-medium text-foreground">{task.prompt}</p>
+              {task.hint ? <p className="mt-1 text-xs text-muted-foreground">{task.hint}</p> : null}
+              <div className="mt-2 flex gap-2">
+                <TaskButton active={status === "yes"} onClick={() => onSave(task.key, "yes")} disabled={busy}>
+                  Yes
+                </TaskButton>
+                <TaskButton active={status === "needs_edit"} onClick={() => onSave(task.key, "needs_edit")} disabled={busy}>
+                  No / Edit
+                </TaskButton>
+                <TaskButton active={status === "skip"} onClick={() => onSave(task.key, "skip")} disabled={busy}>
+                  Skip
+                </TaskButton>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TaskButton({
+  active,
+  onClick,
+  children,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+        active ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
