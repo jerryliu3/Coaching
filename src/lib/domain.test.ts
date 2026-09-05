@@ -209,3 +209,33 @@ describe("linkedin and checklists", () => {
     expect(items.some((i) => i.toLowerCase().includes("open questions"))).toBe(true);
   });
 });
+
+describe("exportDocx", () => {
+  it("builds a non-empty word file", async () => {
+    const { exportDocx } = await import("./export-document");
+    const bytes = await exportDocx({
+      revision: {
+        id: "r",
+        resume_id: "x",
+        revision_number: 1,
+        kind: "discovery",
+        status: "in_progress",
+        current_step: "export",
+      },
+      contact: {
+        revision_id: "r",
+        full_name: "Jane Doe",
+        email: "j@x.com",
+        phone: "",
+        linkedin: "",
+        github: "",
+        location_city: "Toronto",
+        location_region: "ON",
+      },
+      sections: [],
+      files: [],
+      comments: [],
+    });
+    expect(Buffer.from(bytes).byteLength).toBeGreaterThan(100);
+  });
+});
