@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentProfile, getRevisionTree } from "@/lib/data";
+import { currentProfile, getRevisionTree, upsertFileRecord } from "@/lib/data";
 import { exportDocx, exportPdf } from "@/lib/export-document";
 import { createServerSupabase } from "@/lib/supabase/server";
 
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const supabase = await createServerSupabase();
     const path = `${revision_id}/export/${name}.pdf`;
     await supabase.storage.from("resume-files").upload(path, bytes, { contentType: "application/pdf", upsert: true });
-    await supabase.from("files").insert({
+    await upsertFileRecord({
       revision_id,
       kind: "export",
       storage_path: path,
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     upsert: true,
   });
-  await supabase.from("files").insert({
+  await upsertFileRecord({
     revision_id,
     kind: "export",
     storage_path: path,

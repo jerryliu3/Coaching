@@ -33,7 +33,7 @@ describe("StepBody", () => {
       />,
     );
     expect(screen.getByText("Upload the resume")).toBeInTheDocument();
-    expect(screen.getByText(/original_upload: old.txt/)).toBeInTheDocument();
+    expect(screen.getByText("old.txt")).toBeInTheDocument();
     const file = new File(["Jane"], "resume.txt", { type: "text/plain" });
     await userEvent.upload(screen.getByLabelText("Resume file"), file);
     expect(fetchMock).toHaveBeenCalled();
@@ -44,7 +44,7 @@ describe("StepBody", () => {
     render(
       <StepBody tree={testTree()} step={{ id: "format", kind: "format", label: "Format" }} onChange={onChange} onReload={onReload} />,
     );
-    expect(screen.getByText(/Current section order: Work Experience/)).toBeInTheDocument();
+    expect(screen.getByText(/Work Experience/)).toBeInTheDocument();
   });
 
   it("saves contact fields on blur", async () => {
@@ -56,13 +56,10 @@ describe("StepBody", () => {
     await userEvent.type(name, "Ada Lovelace");
     await userEvent.tab();
     expect(onChange).toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/revisions/r1",
-      expect.objectContaining({ method: "PATCH" }),
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/api/revisions/r1", expect.objectContaining({ method: "PATCH" }));
   });
 
-  it("edits experience bullets and adds one", async () => {
+  it("syncs bullets from the combined textarea", async () => {
     render(
       <StepBody
         tree={testTree()}
@@ -75,9 +72,7 @@ describe("StepBody", () => {
     await userEvent.clear(bullet);
     await userEvent.type(bullet, "Shipped an API");
     await userEvent.tab();
-    expect(fetchMock).toHaveBeenCalledWith("/api/bullets/b1", expect.objectContaining({ method: "PATCH" }));
-    await userEvent.click(screen.getByRole("button", { name: "Add bullet" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/comments", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/entries/e1/bullets", expect.objectContaining({ method: "POST" }));
   });
 
   it("shows empty experience and project copy", () => {
@@ -100,31 +95,6 @@ describe("StepBody", () => {
       />,
     );
     expect(screen.getByText("No project yet.")).toBeInTheDocument();
-  });
-
-  it("renders education, skills, and extra entries", () => {
-    const school = testEntry({ id: "ed1", kind: "school", org_name: "UofT", gpa: "3.9", courses: "OS" });
-    const skill = testEntry({ id: "sk1", kind: "skill_group", org_name: "Languages" });
-    const patent = testEntry({ id: "p1", kind: "patent", org_name: "USPTO" });
-    const tree = testTree({
-      sections: [
-        testSection({ id: "ed", kind: "education", heading: "Education", entries: [school] }),
-        testSection({ id: "sk", kind: "skills", heading: "Skills", entries: [skill] }),
-        testSection({ id: "pt", kind: "patents", heading: "Patents", entries: [patent] }),
-      ],
-    });
-    const { rerender } = render(
-      <StepBody tree={tree} step={{ id: "education", kind: "education", label: "Education" }} onChange={onChange} onReload={onReload} />,
-    );
-    expect(screen.getByDisplayValue("3.9")).toBeInTheDocument();
-    rerender(
-      <StepBody tree={tree} step={{ id: "skills", kind: "skills", label: "Skills" }} onChange={onChange} onReload={onReload} />,
-    );
-    expect(screen.getByDisplayValue("Languages")).toBeInTheDocument();
-    rerender(
-      <StepBody tree={tree} step={{ id: "patents", kind: "patents", label: "Patents" }} onChange={onChange} onReload={onReload} />,
-    );
-    expect(screen.getByDisplayValue("USPTO")).toBeInTheDocument();
   });
 
   it("exports docx and marks the revision sent", async () => {

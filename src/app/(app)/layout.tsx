@@ -7,33 +7,33 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { profile, user } = await currentProfile();
   return (
-    <div className="flex min-h-screen">
-      <aside className="flex w-56 flex-col gap-4 border-r bg-sidebar px-4 py-6">
+    <div className="flex min-h-screen bg-background">
+      <aside className="flex w-60 flex-col gap-6 border-r border-border/80 bg-sidebar px-4 py-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Studio</p>
-          <p className="font-semibold">Resume editor</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Resume studio</p>
+          <p className="mt-1 text-base font-semibold tracking-tight">Coaching</p>
         </div>
-        <nav className="flex flex-col gap-1 text-sm">
-          <Link className="rounded-md px-2 py-1.5 hover:bg-muted" href="/">
+        <nav className="flex flex-col gap-0.5 text-sm">
+          <Link className="rounded-lg px-3 py-2 font-medium hover:bg-muted/80" href="/">
             Resumes
           </Link>
-          <Link className="rounded-md px-2 py-1.5 hover:bg-muted" href="/analysis">
+          <Link className="rounded-lg px-3 py-2 text-muted-foreground hover:bg-muted/80 hover:text-foreground" href="/analysis">
             Analysis
           </Link>
         </nav>
-        <div className="mt-auto text-xs text-muted-foreground">
-          <p>{profile?.display_name || user?.email}</p>
+        <div className="mt-auto rounded-xl border border-border/60 bg-card/50 px-3 py-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">{profile?.display_name || user?.email}</p>
           <p className="capitalize">{profile?.role ?? "contractor"}</p>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-6 py-3">
+        <header className="flex items-center justify-between border-b border-border/60 bg-card/40 px-8 py-4 backdrop-blur-sm">
           <p className="text-sm text-muted-foreground">Section-by-section editing</p>
-          <Button asChild variant="outline" size="sm">
+          <Button asChild size="sm">
             <Link href="/resumes/new">New resume</Link>
           </Button>
         </header>
-        <div className="flex-1 p-6">{children}</div>
+        <div className="flex-1 px-8 py-6">{children}</div>
       </div>
     </div>
   );

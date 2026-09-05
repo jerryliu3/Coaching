@@ -12,9 +12,13 @@ export default function NewResumePage() {
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
     const res = await fetch("/api/resumes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -23,6 +27,7 @@ export default function NewResumePage() {
     const json = await res.json();
     if (!res.ok) {
       setError(json.error || "Could not create");
+      setBusy(false);
       return;
     }
     router.push(`/resumes/${json.resume.id}/rev/1/upload`);
@@ -44,7 +49,7 @@ export default function NewResumePage() {
         <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jane Doe — May 2026" />
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Button type="submit">Start editing</Button>
+      <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Start editing"}</Button>
     </form>
   );
 }

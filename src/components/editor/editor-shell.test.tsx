@@ -10,6 +10,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: vi.fn() }),
 }));
 
+vi.mock("./reference-panel", () => ({
+  ReferencePanel: () => <div>Reference panel</div>,
+}));
+
 describe("EditorShell", () => {
   beforeEach(() => {
     push.mockReset();

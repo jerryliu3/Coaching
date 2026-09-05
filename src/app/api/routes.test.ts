@@ -20,6 +20,7 @@ const saveComment = vi.fn();
 const applyParsedResume = vi.fn();
 const listGuidelines = vi.fn();
 const insertGuidelines = vi.fn();
+const upsertFileRecord = vi.fn();
 const storageUpload = vi.fn();
 const tableInsert = vi.fn();
 
@@ -41,6 +42,7 @@ vi.mock("@/lib/data", () => ({
   applyParsedResume: (...args: unknown[]) => applyParsedResume(...args),
   listGuidelines: (...args: unknown[]) => listGuidelines(...args),
   insertGuidelines: (...args: unknown[]) => insertGuidelines(...args),
+  upsertFileRecord: (...args: unknown[]) => upsertFileRecord(...args),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -67,6 +69,7 @@ beforeEach(() => {
   getRevisionTree.mockResolvedValue(testTree());
   listGuidelines.mockResolvedValue([]);
   storageUpload.mockResolvedValue({ error: null });
+  upsertFileRecord.mockResolvedValue("file-1");
   tableInsert.mockResolvedValue({});
   addBullet.mockResolvedValue({ id: "b-new" });
   saveComment.mockResolvedValue({ id: "c-new", body: "hi" });
@@ -318,7 +321,7 @@ describe("export", () => {
     const res = await POST(new Request("http://x", { method: "POST", body: JSON.stringify({ revision_id: "r1" }) }));
     expect(res.headers.get("Content-Disposition")).toMatch(/Jane-Doe.docx/);
     expect(res.headers.get("Content-Type")).toMatch(/wordprocessingml/);
-    expect(tableInsert).toHaveBeenCalled();
+    expect(upsertFileRecord).toHaveBeenCalled();
   });
 
   it("returns a pdf attachment", async () => {

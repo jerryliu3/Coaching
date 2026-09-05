@@ -107,6 +107,7 @@ export type ResumeFile = {
   storage_path: string;
   mime_type: string;
   filename: string;
+  extracted_text?: string;
 };
 
 export type RevisionTree = {
