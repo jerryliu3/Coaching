@@ -1,4 +1,4 @@
-import type { Contact, Entry, RevisionTree, WorkflowStep } from "./types";
+import type { RevisionTree, WorkflowStep } from "./types";
 import { contactMatchStrings, entryMatchStrings } from "./reference-snapshot";
 
 export type ReferenceSection = {

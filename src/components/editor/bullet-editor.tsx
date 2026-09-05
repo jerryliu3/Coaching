@@ -59,17 +59,23 @@ export function BulletEditor({
   comments: Comment[];
   onReload: () => Promise<void>;
 }) {
+  const bulletsFingerprint = useMemo(
+    () => bullets.map((bullet) => `${bullet.id}:${bullet.current_text}`).join("\n"),
+    [bullets],
+  );
   const [text, setText] = useState(() => bulletsToText(bullets));
+  const [syncedFingerprint, setSyncedFingerprint] = useState(bulletsFingerprint);
+  if (bulletsFingerprint !== syncedFingerprint) {
+    setSyncedFingerprint(bulletsFingerprint);
+    setText(bulletsToText(bullets));
+  }
+
   const [selection, setSelection] = useState<{ start: number; end: number; snippet: string } | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const commentInputRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setText(bulletsToText(bullets));
-  }, [bullets]);
 
   const cancelPendingComment = useCallback(() => {
     setSelection(null);

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StepBody } from "./step-body";
-import { testEntry, testSection, testTree } from "@/lib/test-fixtures";
+import { testSection, testTree } from "@/lib/test-fixtures";
 
 describe("StepBody", () => {
   const onChange = vi.fn();

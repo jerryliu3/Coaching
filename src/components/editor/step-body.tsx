@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import type { Entry, ResumeFile, RevisionTree, WorkflowStep } from "@/lib/types";
 import { AiPanel } from "./ai-panel";
 import { BulletEditor } from "./bullet-editor";

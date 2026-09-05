@@ -29,11 +29,17 @@ export function EditorSidebar({
   const [tab, setTab] = useState<SidebarTab>("reference");
   const [data, setData] = useState<ReferenceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchResumeId, setFetchResumeId] = useState(resumeId);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  if (resumeId !== fetchResumeId) {
+    setFetchResumeId(resumeId);
+    setData(null);
+    setLoading(true);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     void fetch(`/api/resumes/${resumeId}/reference`)
       .then((r) => r.json())
       .then((json) => {
@@ -49,12 +55,12 @@ export function EditorSidebar({
 
   const active = useMemo(
     () => (data?.sections ? activeReferenceSection(data.sections, step) : null),
-    [data?.sections, step],
+    [data, step],
   );
 
   const highlightRanges = useMemo(
     () => (data?.text && data.sections ? resolveHighlightRanges(data.text, data.sections, step, tree) : []),
-    [data?.sections, data?.text, step, tree],
+    [data, step, tree],
   );
 
   const spans = useMemo(

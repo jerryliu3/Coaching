@@ -24,6 +24,9 @@ const upsertFileRecord = vi.fn();
 const storageUpload = vi.fn();
 const tableInsert = vi.fn();
 
+const getReferenceText = vi.fn();
+const syncEntryBullets = vi.fn();
+
 vi.mock("@/lib/data", () => ({
   currentProfile: (...args: unknown[]) => currentProfile(...args),
   listResumes: (...args: unknown[]) => listResumes(...args),
@@ -32,6 +35,8 @@ vi.mock("@/lib/data", () => ({
   assignResume: (...args: unknown[]) => assignResume(...args),
   copyRevision: (...args: unknown[]) => copyRevision(...args),
   getRevisionTree: (...args: unknown[]) => getRevisionTree(...args),
+  getReferenceText: (...args: unknown[]) => getReferenceText(...args),
+  syncEntryBullets: (...args: unknown[]) => syncEntryBullets(...args),
   saveContact: (...args: unknown[]) => saveContact(...args),
   saveEntry: (...args: unknown[]) => saveEntry(...args),
   setCurrentStep: (...args: unknown[]) => setCurrentStep(...args),
@@ -73,6 +78,8 @@ beforeEach(() => {
   tableInsert.mockResolvedValue({});
   addBullet.mockResolvedValue({ id: "b-new" });
   saveComment.mockResolvedValue({ id: "c-new", body: "hi" });
+  getReferenceText.mockResolvedValue({ text: "Jane Doe\n\nWork Experience\nAcme", filename: "resume.txt" });
+  syncEntryBullets.mockResolvedValue(undefined);
   delete process.env.AI_GATEWAY_API_KEY;
 });
 
@@ -143,6 +150,23 @@ describe("resumes", () => {
     const res = await POST(new Request("http://x", { method: "POST" }), { params: Promise.resolve({ id: "r1" }) });
     expect(res.status).toBe(400);
   });
+
+  it("returns reference text and sections for a resume", async () => {
+    const { GET } = await import("./resumes/[id]/reference/route");
+    const res = await GET(new Request("http://x"), { params: Promise.resolve({ id: "r1" }) });
+    const json = await res.json();
+    expect(getReferenceText).toHaveBeenCalledWith("r1");
+    expect(json.filename).toBe("resume.txt");
+    expect(json.text).toContain("Acme");
+    expect(json.sections.length).toBeGreaterThan(0);
+  });
+
+  it("returns empty reference payload when no upload exists", async () => {
+    getReferenceText.mockResolvedValue(null);
+    const { GET } = await import("./resumes/[id]/reference/route");
+    const json = await (await GET(new Request("http://x"), { params: Promise.resolve({ id: "r1" }) })).json();
+    expect(json).toEqual({ text: "", filename: "", sections: [] });
+  });
 });
 
 describe("revisions and bullets", () => {
@@ -177,6 +201,19 @@ describe("revisions and bullets", () => {
     );
     expect(saveBullet).toHaveBeenCalledWith("b1", "Shipped it", "user-1", "rev1");
     expect(res.status).toBe(200);
+  });
+
+  it("syncs entry bullets from multiline text", async () => {
+    const { POST } = await import("./entries/[id]/bullets/route");
+    const res = await POST(
+      new Request("http://x", {
+        method: "POST",
+        body: JSON.stringify({ text: "- Built it\n- Shipped it", revision_id: "rev1" }),
+      }),
+      { params: Promise.resolve({ id: "e1" }) },
+    );
+    expect(syncEntryBullets).toHaveBeenCalledWith("e1", ["Built it", "Shipped it"], "user-1", "rev1");
+    expect((await res.json()).ok).toBe(true);
   });
 });
 
