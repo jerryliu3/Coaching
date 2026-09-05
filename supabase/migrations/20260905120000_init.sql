@@ -219,7 +219,10 @@ begin
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)),
-    case when (select count(*) from public.profiles) = 0 then 'owner' else 'contractor' end
+    case
+      when (select count(*) from public.profiles) = 0 then 'owner'::public.user_role
+      else 'contractor'::public.user_role
+    end
   );
   return new;
 end;
