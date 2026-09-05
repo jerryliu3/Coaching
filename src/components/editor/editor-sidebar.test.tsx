@@ -39,6 +39,7 @@ describe("EditorSidebar", () => {
   });
 
   it("loads reference text and switches to the checklist tab", async () => {
+    const onTreeReload = vi.fn(async () => undefined);
     render(
       <EditorSidebar
         resumeId="resume-1"
@@ -46,6 +47,7 @@ describe("EditorSidebar", () => {
         revisionKind="discovery"
         tree={testTree()}
         width={360}
+        onTreeReload={onTreeReload}
       />,
     );
 
@@ -55,6 +57,17 @@ describe("EditorSidebar", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Keep in mind" }));
     expect(screen.getByText(/open questions/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Guided flow" }));
+    expect(screen.getByText(/org, role, location, and dates/i)).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Yes" })[0]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/revisions/r1",
+      expect.objectContaining({
+        method: "PATCH",
+      }),
+    );
+    expect(onTreeReload).toHaveBeenCalled();
   });
 
   it("clamps sidebar width while dragging", async () => {

@@ -130,7 +130,14 @@ export function EditorShell({
           onPointerUp={onPointerUp}
         />
 
-        <EditorSidebar resumeId={resumeId} step={step} revisionKind={tree.revision.kind} tree={tree} width={width} />
+        <EditorSidebar
+          resumeId={resumeId}
+          step={step}
+          revisionKind={tree.revision.kind}
+          tree={tree}
+          width={width}
+          onTreeReload={reload}
+        />
       </div>
     </div>
   );
