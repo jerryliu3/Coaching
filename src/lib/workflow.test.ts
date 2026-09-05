@@ -64,13 +64,32 @@ describe("buildSteps", () => {
       "experience/0",
       "experience/1",
       "project/0",
-      "education",
+      "education/0",
       "skills",
-      "extracurricular",
-      "patents",
+      "extracurricular/0",
+      "patents/0",
       "export",
     ]);
     expect(buildSteps(tree).find((s) => s.id === "experience/1")?.label).toBe("Globex");
+  });
+
+  it("keeps skills as a single step even with multiple entries", () => {
+    const tree = testTree({
+      sections: [
+        testSection({
+          id: "skills",
+          kind: "skills",
+          heading: "Skills",
+          entries: [
+            testEntry({ id: "sk1", kind: "skill_group", org_name: "Languages" }),
+            testEntry({ id: "sk2", kind: "skill_group", org_name: "Tools", position: 1 }),
+          ],
+        }),
+      ],
+    });
+    const skillSteps = buildSteps(tree).filter((s) => s.kind === "skills");
+    expect(skillSteps).toHaveLength(1);
+    expect(skillSteps[0]?.id).toBe("skills");
   });
 });
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { analyzeBullet } from "./bullet-flags";
+import { buildContactReferenceSnapshot, buildEntryReferenceSnapshot } from "./reference-snapshot";
 import type { ParsedResume, RevisionTree } from "./types";
 import { revisionKind } from "./workflow";
 import { createServerSupabase } from "./supabase/server";
@@ -277,7 +278,7 @@ export async function syncEntryBullets(
 
 export async function saveContact(revisionId: string, contact: Record<string, string>) {
   const { supabase } = await currentProfile();
-  const { error } = await supabase.from("contacts").upsert({ revision_id: revisionId, ...contact });
+  const { error } = await supabase.from("contacts").update(contact).eq("revision_id", revisionId);
   if (error) throw error;
 }
 
@@ -377,7 +378,12 @@ export async function setRevisionStatus(revisionId: string, status: string) {
 
 export async function applyParsedResume(revisionId: string, parsed: ParsedResume) {
   const { supabase } = await currentProfile();
-  await supabase.from("contacts").upsert({ revision_id: revisionId, ...parsed.contact });
+  const importedFields = buildContactReferenceSnapshot(parsed.contact);
+  await supabase.from("contacts").upsert({
+    revision_id: revisionId,
+    ...parsed.contact,
+    imported_fields: importedFields,
+  });
   await supabase.from("sections").delete().eq("revision_id", revisionId);
   const groups: { kind: string; heading: string; entryKind: string; items: ParsedResume["jobs"] }[] = [
     { kind: "experience", heading: "Work Experience", entryKind: "job", items: parsed.jobs },
@@ -425,6 +431,7 @@ export async function applyParsedResume(revisionId: string, parsed: ParsedResume
           url: item.url,
           gpa: item.gpa,
           courses: item.courses,
+          meta: { reference: buildEntryReferenceSnapshot(item) },
         })
         .select()
         .single();
@@ -459,7 +466,11 @@ export async function copyRevision(resumeId: string, fromRevisionId: string) {
     .select()
     .single();
   if (error) throw error;
-  await supabase.from("contacts").insert({ ...tree.contact, revision_id: revision.id });
+  await supabase.from("contacts").insert({
+    ...tree.contact,
+    revision_id: revision.id,
+    imported_fields: tree.contact.imported_fields ?? buildContactReferenceSnapshot(tree.contact),
+  });
   const commentMap = new Map<string, string>();
   for (const section of tree.sections) {
     const { data: newSection } = await supabase
@@ -484,6 +495,7 @@ export async function copyRevision(resumeId: string, fromRevisionId: string) {
           url: entry.url,
           gpa: entry.gpa,
           courses: entry.courses,
+          meta: entry.meta ?? {},
         })
         .select()
         .single();

@@ -37,17 +37,13 @@ export function StepBody({
     return <EntryStep tree={tree} entry={entry} onReload={onReload} />;
   }
   if (step.kind === "education") {
-    const entries = tree.sections.find((s) => s.kind === "education")?.entries ?? [];
-    return (
-      <div className="space-y-6">
-        {entries.map((entry) => (
-          <EntryStep key={entry.id} tree={tree} entry={entry} onReload={onReload} showCourses />
-        ))}
-      </div>
-    );
+    const entry = tree.sections.find((s) => s.kind === "education")?.entries[step.entryIndex ?? 0];
+    if (!entry) return <EmptyHint text="No education entry yet." />;
+    return <EntryStep tree={tree} entry={entry} onReload={onReload} showCourses />;
   }
   if (step.kind === "skills") {
     const entries = tree.sections.find((s) => s.kind === "skills")?.entries ?? [];
+    if (!entries.length) return <EmptyHint text="No skills entry yet." />;
     return (
       <div className="space-y-6">
         {entries.map((entry) => (
@@ -203,7 +199,7 @@ function EntryStep({
   showCourses?: boolean;
   skills?: boolean;
 }) {
-  const title = skills ? entry.org_name || "Skills" : entry.org_name || entry.role_title || "Entry";
+  const title = entry.org_name?.trim() || (skills ? "Skills" : entry.role_title?.trim() || "Entry");
 
   async function patch(field: string, value: string | boolean) {
     await fetch(`/api/revisions/${tree.revision.id}`, {

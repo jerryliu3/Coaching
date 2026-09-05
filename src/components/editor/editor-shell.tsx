@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { checklistFor } from "@/lib/checklists";
 import { focusCopy } from "@/lib/bullet-flags";
 import type { RevisionTree, WorkflowStep } from "@/lib/types";
 import { adjacentStep, buildSteps, resolveStep, stepPath } from "@/lib/workflow";
-import { ReferencePanel } from "./reference-panel";
+import { EditorSidebar, useResizableSidebar } from "./editor-sidebar";
 import { StepBody } from "./step-body";
 
 export function EditorShell({
@@ -26,10 +25,11 @@ export function EditorShell({
   const router = useRouter();
   const [tree, setTree] = useState(initialTree);
   const [startingRev, setStartingRev] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { width, onPointerDown, onPointerMove, onPointerUp } = useResizableSidebar(380, containerRef);
   const steps = useMemo(() => buildSteps(tree), [tree]);
   const step = resolveStep(steps, stepId);
   const focus = focusCopy(tree.revision.kind);
-  const checklist = checklistFor(step, tree.revision.kind);
   const atLastStep = step.id === steps[steps.length - 1]?.id;
 
   useEffect(() => {
@@ -67,8 +67,8 @@ export function EditorShell({
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/70 bg-gradient-to-br from-card to-muted/30 px-5 py-4 shadow-sm">
+    <div data-editor-shell className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/70 bg-gradient-to-br from-card to-muted/30 px-5 py-4 shadow-sm">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/resumes/${resumeId}`} className="text-xs font-medium text-muted-foreground hover:text-foreground">
@@ -82,7 +82,7 @@ export function EditorShell({
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-1">
         {steps.map((s) => (
           <button
             key={s.id}
@@ -99,10 +99,11 @@ export function EditorShell({
         ))}
       </div>
 
-      <div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        <div className="min-w-0 space-y-4">
-          <StepBody tree={tree} step={step} onChange={setTree} onReload={reload} />
-          <div className="flex justify-between border-t border-border/60 pt-4">
+      <div className="flex h-0 min-h-0 flex-1 items-stretch gap-0 overflow-hidden" ref={containerRef}>
+        <div className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+          <div className="space-y-4 pb-4">
+            <StepBody tree={tree} step={step} onChange={setTree} onReload={reload} />
+            <div className="flex justify-between border-t border-border/60 pt-4">
             <Button variant="outline" onClick={() => go(adjacentStep(steps, step.id, -1))}>
               Previous
             </Button>
@@ -116,22 +117,20 @@ export function EditorShell({
               </Button>
             )}
           </div>
+          </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col gap-4">
-          <ReferencePanel resumeId={resumeId} step={step} />
-          <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-            <h2 className="mb-2 text-sm font-semibold">Keep in mind</h2>
-            <ul className="space-y-2 text-xs leading-relaxed text-muted-foreground">
-              {checklist.map((item) => (
-                <li key={item} className="flex gap-2">
-                  <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary/60" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          className="mx-1 h-full w-1.5 shrink-0 cursor-col-resize self-stretch rounded-full bg-border/80 transition-colors hover:bg-primary/40 active:bg-primary/60"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        />
+
+        <EditorSidebar resumeId={resumeId} step={step} revisionKind={tree.revision.kind} tree={tree} width={width} />
       </div>
     </div>
   );

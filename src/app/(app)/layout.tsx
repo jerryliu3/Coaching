@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { profile, user } = await currentProfile();
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       <aside className="flex w-60 flex-col gap-6 border-r border-border/80 bg-sidebar px-4 py-6">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Resume studio</p>
@@ -26,14 +26,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="capitalize">{profile?.role ?? "contractor"}</p>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border/60 bg-card/40 px-8 py-4 backdrop-blur-sm">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex shrink-0 items-center justify-between border-b border-border/60 bg-card/40 px-8 py-4 backdrop-blur-sm">
           <p className="text-sm text-muted-foreground">Section-by-section editing</p>
           <Button asChild size="sm">
             <Link href="/resumes/new">New resume</Link>
           </Button>
         </header>
-        <div className="flex-1 px-8 py-6">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-6">{children}</div>
       </div>
     </div>
   );
