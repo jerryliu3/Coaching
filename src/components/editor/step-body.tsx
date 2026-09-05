@@ -84,6 +84,7 @@ function UploadStep({ tree, onReload }: { tree: RevisionTree; onReload: () => Pr
       <p className="text-sm text-muted-foreground">DOCX or PDF. The original file is stored even after we parse it into fields.</p>
       <Input
         type="file"
+        aria-label="Resume file"
         accept=".docx,.pdf,.txt"
         disabled={busy}
         onChange={(e) => {

@@ -1,87 +1,92 @@
 import { describe, expect, it } from "vitest";
-import { adjacentStep, buildSteps, revisionKind } from "./workflow";
-import type { RevisionTree } from "./types";
+import { adjacentStep, buildSteps, resolveStep, revisionKind, stepPath } from "./workflow";
+import { testEntry, testSection, testTree } from "./test-fixtures";
 
-const tree: RevisionTree = {
-  revision: {
-    id: "r1",
-    resume_id: "resume",
-    revision_number: 1,
-    kind: "discovery",
-    status: "in_progress",
-    current_step: "upload",
-  },
-  contact: {
-    revision_id: "r1",
-    full_name: "Ada",
-    email: "",
-    phone: "",
-    linkedin: "",
-    github: "",
-    location_city: "",
-    location_region: "",
-  },
-  sections: [
-    {
-      id: "s1",
-      revision_id: "r1",
-      kind: "experience",
-      position: 0,
-      heading: "Work Experience",
-      entries: [
-        {
-          id: "e1",
-          section_id: "s1",
-          kind: "job",
-          position: 0,
-          org_name: "Acme",
-          role_title: "SWE",
-          location: "",
-          start_date: null,
-          end_date: null,
-          is_current: false,
-          url: "",
-          gpa: "",
-          courses: "",
-          bullets: [],
-          comments: [],
-        },
-        {
-          id: "e2",
-          section_id: "s1",
-          kind: "job",
-          position: 1,
-          org_name: "Globex",
-          role_title: "Intern",
-          location: "",
-          start_date: null,
-          end_date: null,
-          is_current: false,
-          url: "",
-          gpa: "",
-          courses: "",
-          bullets: [],
-          comments: [],
-        },
-      ],
-    },
-  ],
-  files: [],
-  comments: [],
-};
-
-describe("workflow", () => {
-  it("maps revision numbers to kinds", () => {
+describe("revisionKind", () => {
+  it("maps the three editing modes", () => {
+    expect(revisionKind(0)).toBe("discovery");
     expect(revisionKind(1)).toBe("discovery");
     expect(revisionKind(2)).toBe("editing");
-    expect(revisionKind(4)).toBe("polishing");
+    expect(revisionKind(3)).toBe("polishing");
+    expect(revisionKind(10)).toBe("polishing");
+  });
+});
+
+describe("buildSteps", () => {
+  it("labels upload vs client return by revision number", () => {
+    expect(buildSteps(testTree()).find((s) => s.id === "upload")?.label).toBe("Upload");
+    expect(buildSteps(testTree({ revision: { ...testTree().revision, revision_number: 2 } })).find((s) => s.id === "upload")?.label).toBe(
+      "Client return",
+    );
   });
 
-  it("builds one step per job and includes export", () => {
-    const steps = buildSteps(tree);
+  it("creates a placeholder experience when none exist", () => {
+    const steps = buildSteps(testTree({ sections: [] }));
     expect(steps.map((s) => s.id)).toContain("experience/0");
-    expect(steps.map((s) => s.id)).toContain("experience/1");
+    expect(steps.map((s) => s.id)).toContain("project/0");
     expect(steps.at(-1)?.id).toBe("export");
-    expect(adjacentStep(steps, "experience/0", 1).id).toBe("experience/1");
+  });
+
+  it("names steps from org names and includes optional sections", () => {
+    const tree = testTree({
+      sections: [
+        testSection({
+          entries: [
+            testEntry({ id: "j1", org_name: "Acme" }),
+            testEntry({ id: "j2", org_name: "Globex", position: 1 }),
+          ],
+        }),
+        testSection({
+          id: "s2",
+          kind: "project",
+          heading: "Projects",
+          entries: [testEntry({ id: "p1", kind: "project", org_name: "Secrets" })],
+        }),
+        testSection({
+          id: "s3",
+          kind: "extracurricular",
+          heading: "Clubs",
+          entries: [testEntry({ id: "x1", kind: "extra", org_name: "Club" })],
+        }),
+        testSection({
+          id: "s4",
+          kind: "patents",
+          heading: "Patents",
+          entries: [testEntry({ id: "pat1", kind: "patent", org_name: "US123" })],
+        }),
+      ],
+    });
+    const ids = buildSteps(tree).map((s) => s.id);
+    expect(ids).toEqual([
+      "upload",
+      "format",
+      "contact",
+      "experience/0",
+      "experience/1",
+      "project/0",
+      "education",
+      "skills",
+      "extracurricular",
+      "patents",
+      "export",
+    ]);
+    expect(buildSteps(tree).find((s) => s.id === "experience/1")?.label).toBe("Globex");
+  });
+});
+
+describe("step navigation", () => {
+  const steps = buildSteps(testTree());
+
+  it("moves prev/next and clamps at the ends", () => {
+    expect(adjacentStep(steps, "upload", -1).id).toBe("upload");
+    expect(adjacentStep(steps, "export", 1).id).toBe("export");
+    expect(adjacentStep(steps, "missing", 1).id).toBe("upload");
+    expect(adjacentStep(steps, "contact", 1).kind).toBe("experience");
+  });
+
+  it("resolves ids and builds editor urls", () => {
+    expect(resolveStep(steps, "contact").kind).toBe("contact");
+    expect(resolveStep(steps, "nope").id).toBe("upload");
+    expect(stepPath("abc", 2, "experience/0")).toBe("/resumes/abc/rev/2/experience/0");
   });
 });
