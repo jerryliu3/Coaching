@@ -10,6 +10,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: vi.fn() }),
 }));
 
+vi.mock("./editor-sidebar", () => ({
+  EditorSidebar: () => <div>Sidebar</div>,
+  useResizableSidebar: () => ({
+    width: 380,
+    onPointerDown: vi.fn(),
+    onPointerMove: vi.fn(),
+    onPointerUp: vi.fn(),
+  }),
+}));
+
 describe("EditorShell", () => {
   beforeEach(() => {
     push.mockReset();

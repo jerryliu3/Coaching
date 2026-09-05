@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { analyzeBullet } from "./bullet-flags";
+import { buildContactReferenceSnapshot, buildEntryReferenceSnapshot } from "./reference-snapshot";
 import type { ParsedResume, RevisionTree } from "./types";
 import { revisionKind } from "./workflow";
 import { createServerSupabase } from "./supabase/server";
@@ -183,9 +184,101 @@ export async function getRevisionTree(revisionId: string): Promise<RevisionTree>
   };
 }
 
+export async function upsertFileRecord(input: {
+  revision_id: string;
+  kind: string;
+  storage_path: string;
+  mime_type: string;
+  filename: string;
+  extracted_text?: string;
+}) {
+  const { supabase } = await currentProfile();
+  const { data: existing } = await supabase
+    .from("files")
+    .select("id")
+    .eq("revision_id", input.revision_id)
+    .eq("kind", input.kind)
+    .eq("filename", input.filename)
+    .maybeSingle();
+  if (existing?.id) {
+    const { error } = await supabase
+      .from("files")
+      .update({
+        storage_path: input.storage_path,
+        mime_type: input.mime_type,
+        extracted_text: input.extracted_text ?? "",
+      })
+      .eq("id", existing.id);
+    if (error) throw error;
+    return existing.id;
+  }
+  const { data, error } = await supabase.from("files").insert(input).select("id").single();
+  if (error) throw error;
+  return data.id;
+}
+
+export async function getReferenceText(resumeId: string): Promise<{ text: string; filename: string } | null> {
+  const { supabase } = await currentProfile();
+  const { data: revisions } = await supabase
+    .from("revisions")
+    .select("id, revision_number")
+    .eq("resume_id", resumeId)
+    .order("revision_number", { ascending: true });
+  if (!revisions?.length) return null;
+
+  for (const rev of revisions) {
+    const { data: files } = await supabase
+      .from("files")
+      .select("*")
+      .eq("revision_id", rev.id)
+      .in("kind", ["original_upload", "client_return"]);
+    const file = files?.find((f) => f.kind === "original_upload") ?? files?.[0];
+    if (!file) continue;
+    if (file.extracted_text) {
+      return { text: file.extracted_text, filename: file.filename };
+    }
+    const { data: blob } = await supabase.storage.from("resume-files").download(file.storage_path);
+    if (!blob) continue;
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    let text = "";
+    if (file.filename.toLowerCase().endsWith(".docx")) {
+      const mammoth = await import("mammoth");
+      text = (await mammoth.extractRawText({ buffer })).value;
+    } else if (file.filename.toLowerCase().endsWith(".pdf")) {
+      text = buffer.toString("latin1").replace(/[^\n\r\t\x20-\x7E]/g, " ");
+    } else {
+      text = buffer.toString("utf8");
+    }
+    await supabase.from("files").update({ extracted_text: text }).eq("id", file.id);
+    return { text, filename: file.filename };
+  }
+  return null;
+}
+
+export async function syncEntryBullets(
+  entryId: string,
+  lines: string[],
+  userId: string | undefined,
+  revisionId: string,
+) {
+  const { supabase } = await currentProfile();
+  const { data: existing } = await supabase.from("bullets").select("*").eq("entry_id", entryId).order("position");
+  const bullets = existing ?? [];
+  for (let i = 0; i < lines.length; i++) {
+    if (bullets[i]) {
+      await saveBullet(bullets[i].id, lines[i], userId, revisionId);
+    } else {
+      await addBullet(entryId, lines[i]);
+    }
+  }
+  for (let i = lines.length; i < bullets.length; i++) {
+    await supabase.from("bullets").delete().eq("id", bullets[i].id);
+  }
+}
+
 export async function saveContact(revisionId: string, contact: Record<string, string>) {
   const { supabase } = await currentProfile();
-  const { error } = await supabase.from("contacts").upsert({ revision_id: revisionId, ...contact });
+  const { error } = await supabase.from("contacts").update(contact).eq("revision_id", revisionId);
   if (error) throw error;
 }
 
@@ -285,7 +378,12 @@ export async function setRevisionStatus(revisionId: string, status: string) {
 
 export async function applyParsedResume(revisionId: string, parsed: ParsedResume) {
   const { supabase } = await currentProfile();
-  await supabase.from("contacts").upsert({ revision_id: revisionId, ...parsed.contact });
+  const importedFields = buildContactReferenceSnapshot(parsed.contact);
+  await supabase.from("contacts").upsert({
+    revision_id: revisionId,
+    ...parsed.contact,
+    imported_fields: importedFields,
+  });
   await supabase.from("sections").delete().eq("revision_id", revisionId);
   const groups: { kind: string; heading: string; entryKind: string; items: ParsedResume["jobs"] }[] = [
     { kind: "experience", heading: "Work Experience", entryKind: "job", items: parsed.jobs },
@@ -333,6 +431,7 @@ export async function applyParsedResume(revisionId: string, parsed: ParsedResume
           url: item.url,
           gpa: item.gpa,
           courses: item.courses,
+          meta: { reference: buildEntryReferenceSnapshot(item) },
         })
         .select()
         .single();
@@ -367,7 +466,11 @@ export async function copyRevision(resumeId: string, fromRevisionId: string) {
     .select()
     .single();
   if (error) throw error;
-  await supabase.from("contacts").insert({ ...tree.contact, revision_id: revision.id });
+  await supabase.from("contacts").insert({
+    ...tree.contact,
+    revision_id: revision.id,
+    imported_fields: tree.contact.imported_fields ?? buildContactReferenceSnapshot(tree.contact),
+  });
   const commentMap = new Map<string, string>();
   for (const section of tree.sections) {
     const { data: newSection } = await supabase
@@ -392,6 +495,7 @@ export async function copyRevision(resumeId: string, fromRevisionId: string) {
           url: entry.url,
           gpa: entry.gpa,
           courses: entry.courses,
+          meta: entry.meta ?? {},
         })
         .select()
         .single();

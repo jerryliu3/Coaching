@@ -21,9 +21,14 @@ export function AiPanel({ revisionId, entryId }: { revisionId: string; entryId: 
     setBusy(false);
   }
   return (
-    <div className="space-y-2 rounded-md border p-3">
-      <div className="flex gap-2">
-        <select className="h-8 rounded-lg border bg-background px-2 text-sm" value={trigger} onChange={(e) => setTrigger(e.target.value as typeof trigger)}>
+    <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI assist</p>
+      <div className="flex flex-wrap gap-2">
+        <select
+          className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+          value={trigger}
+          onChange={(e) => setTrigger(e.target.value as typeof trigger)}
+        >
           <option value="review">High-level review</option>
           <option value="apply">Apply guidelines</option>
           <option value="custom">Custom prompt</option>
@@ -32,8 +37,8 @@ export function AiPanel({ revisionId, entryId }: { revisionId: string; entryId: 
           {busy ? "Working…" : "Run AI"}
         </Button>
       </div>
-      <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Optional extra instruction" />
-      {result ? <pre className="overflow-auto rounded-md bg-muted p-2 text-xs">{result}</pre> : null}
+      <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Optional extra instruction" rows={2} className="min-h-0 bg-background text-sm" />
+      {result ? <pre className="max-h-48 overflow-auto rounded-lg bg-background p-3 text-xs">{result}</pre> : null}
     </div>
   );
 }

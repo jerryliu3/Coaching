@@ -32,6 +32,15 @@ export type Contact = {
   github: string;
   location_city: string;
   location_region: string;
+  imported_fields?: {
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    linkedin?: string;
+    github?: string;
+    location_city?: string;
+    location_region?: string;
+  };
 };
 
 export type Bullet = {
@@ -78,6 +87,19 @@ export type Entry = {
   url: string;
   gpa: string;
   courses: string;
+  meta?: {
+    reference?: {
+      org_name?: string;
+      role_title?: string;
+      location?: string;
+      start_date?: string | null;
+      end_date?: string | null;
+      url?: string;
+      gpa?: string;
+      courses?: string;
+      bullets?: string[];
+    };
+  };
   bullets: Bullet[];
   comments: Comment[];
 };
@@ -107,6 +129,7 @@ export type ResumeFile = {
   storage_path: string;
   mime_type: string;
   filename: string;
+  extracted_text?: string;
 };
 
 export type RevisionTree = {

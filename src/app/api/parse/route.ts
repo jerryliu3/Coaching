@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import mammoth from "mammoth";
-import { applyParsedResume, currentProfile } from "@/lib/data";
+import { applyParsedResume, currentProfile, upsertFileRecord } from "@/lib/data";
 import { parseResumeText } from "@/lib/parse-resume";
 import { createServerSupabase } from "@/lib/supabase/server";
 
@@ -22,13 +22,6 @@ export async function POST(request: Request) {
     upsert: true,
   });
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
-  await supabase.from("files").insert({
-    revision_id: revisionId,
-    kind,
-    storage_path: path,
-    mime_type: file.type,
-    filename: file.name,
-  });
 
   let text = "";
   if (file.name.toLowerCase().endsWith(".docx") || file.type.includes("word")) {
@@ -38,6 +31,16 @@ export async function POST(request: Request) {
   } else {
     text = buffer.toString("utf8");
   }
+
+  await upsertFileRecord({
+    revision_id: revisionId,
+    kind,
+    storage_path: path,
+    mime_type: file.type || "application/octet-stream",
+    filename: file.name,
+    extracted_text: text,
+  });
+
   const parsed = parseResumeText(text);
   await applyParsedResume(revisionId, parsed);
   return NextResponse.json({ parsed, path });
