@@ -8,6 +8,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const body = await request.json();
   const lines = textToBulletLines(String(body.text ?? ""));
-  await syncEntryBullets(id, lines, user.id, String(body.revision_id));
+  await syncEntryBullets(id, lines, user.id, String(body.revision_id), body.source === "ai" ? "ai" : "human");
   return NextResponse.json({ ok: true });
 }

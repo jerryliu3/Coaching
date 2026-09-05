@@ -8,10 +8,12 @@ const listResumes = vi.fn();
 const createResume = vi.fn();
 const getResume = vi.fn();
 const assignResume = vi.fn();
+const updateResume = vi.fn();
 const copyRevision = vi.fn();
 const getRevisionTree = vi.fn();
 const saveContact = vi.fn();
 const saveEntry = vi.fn();
+const saveStepCheck = vi.fn();
 const setCurrentStep = vi.fn();
 const setRevisionStatus = vi.fn();
 const saveBullet = vi.fn();
@@ -33,12 +35,14 @@ vi.mock("@/lib/data", () => ({
   createResume: (...args: unknown[]) => createResume(...args),
   getResume: (...args: unknown[]) => getResume(...args),
   assignResume: (...args: unknown[]) => assignResume(...args),
+  updateResume: (...args: unknown[]) => updateResume(...args),
   copyRevision: (...args: unknown[]) => copyRevision(...args),
   getRevisionTree: (...args: unknown[]) => getRevisionTree(...args),
   getReferenceText: (...args: unknown[]) => getReferenceText(...args),
   syncEntryBullets: (...args: unknown[]) => syncEntryBullets(...args),
   saveContact: (...args: unknown[]) => saveContact(...args),
   saveEntry: (...args: unknown[]) => saveEntry(...args),
+  saveStepCheck: (...args: unknown[]) => saveStepCheck(...args),
   setCurrentStep: (...args: unknown[]) => setCurrentStep(...args),
   setRevisionStatus: (...args: unknown[]) => setRevisionStatus(...args),
   saveBullet: (...args: unknown[]) => saveBullet(...args),
@@ -67,7 +71,7 @@ vi.mock("ai", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  currentProfile.mockResolvedValue({ user });
+  currentProfile.mockResolvedValue({ user, profile: { role: "owner" } });
   listResumes.mockResolvedValue([{ id: "r1" }]);
   createResume.mockResolvedValue({ resume: { id: "r1" }, revision: { id: "rev1" } });
   getResume.mockResolvedValue({ id: "r1", revisions: [{ id: "rev1", revision_number: 1 }] });
@@ -130,6 +134,14 @@ describe("resumes", () => {
     expect(assignResume).toHaveBeenCalledWith("r1", "u2");
   });
 
+  it("updates resume title and status", async () => {
+    const { PATCH } = await import("./resumes/[id]/route");
+    await PATCH(new Request("http://x", { method: "PATCH", body: JSON.stringify({ title: "New title", status: "paused" }) }), {
+      params: Promise.resolve({ id: "r1" }),
+    });
+    expect(updateResume).toHaveBeenCalledWith("r1", { title: "New title", status: "paused" });
+  });
+
   it("starts the next revision from the latest one", async () => {
     getResume.mockResolvedValue({
       revisions: [
@@ -183,6 +195,7 @@ describe("revisions and bullets", () => {
           contact: { full_name: "Ada" },
           entryId: "e1",
           entry: { org_name: "Acme" },
+          check: { stepId: "contact", taskKey: "contact-complete", status: "yes" },
         }),
       }),
       { params: Promise.resolve({ id: "rev1" }) },
@@ -191,6 +204,14 @@ describe("revisions and bullets", () => {
     expect(setRevisionStatus).toHaveBeenCalledWith("rev1", "sent");
     expect(saveContact).toHaveBeenCalled();
     expect(saveEntry).toHaveBeenCalledWith("e1", { org_name: "Acme" });
+    expect(saveStepCheck).toHaveBeenCalledWith({
+      revisionId: "rev1",
+      stepId: "contact",
+      taskKey: "contact-complete",
+      status: "yes",
+      note: "",
+      updatedBy: "user-1",
+    });
   });
 
   it("saves bullet text with the current user", async () => {
@@ -199,7 +220,7 @@ describe("revisions and bullets", () => {
       new Request("http://x", { method: "PATCH", body: JSON.stringify({ current_text: "Shipped it", revision_id: "rev1" }) }),
       { params: Promise.resolve({ id: "b1" }) },
     );
-    expect(saveBullet).toHaveBeenCalledWith("b1", "Shipped it", "user-1", "rev1");
+    expect(saveBullet).toHaveBeenCalledWith("b1", "Shipped it", "user-1", "rev1", "human");
     expect(res.status).toBe(200);
   });
 
@@ -212,7 +233,7 @@ describe("revisions and bullets", () => {
       }),
       { params: Promise.resolve({ id: "e1" }) },
     );
-    expect(syncEntryBullets).toHaveBeenCalledWith("e1", ["Built it", "Shipped it"], "user-1", "rev1");
+    expect(syncEntryBullets).toHaveBeenCalledWith("e1", ["Built it", "Shipped it"], "user-1", "rev1", "human");
     expect((await res.json()).ok).toBe(true);
   });
 });

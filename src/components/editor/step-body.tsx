@@ -53,6 +53,7 @@ export function StepBody({
   }
   if (step.kind === "export") return <ExportStep tree={tree} revisionNumber={tree.revision.revision_number} />;
   const extras = tree.sections.find((s) => s.kind === step.kind);
+  if (!extras?.entries?.length) return <EmptyHint text={`No ${step.kind} entry yet.`} />;
   return (
     <div className="space-y-6">
       {(extras?.entries ?? []).map((entry) => (
@@ -101,6 +102,13 @@ function UploadStep({ tree, onReload }: { tree: RevisionTree; onReload: () => Pr
     form.set("revision_id", tree.revision.id);
     form.set("kind", tree.revision.revision_number === 1 ? "original_upload" : "client_return");
     await fetch("/api/parse", { method: "POST", body: form });
+    if (tree.revision.revision_number > 1) {
+      await fetch(`/api/revisions/${tree.revision.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "returned" }),
+      });
+    }
     await onReload();
     setBusy(false);
   }
@@ -141,12 +149,42 @@ function UploadStep({ tree, onReload }: { tree: RevisionTree; onReload: () => Pr
 }
 
 function FormatStep({ tree }: { tree: RevisionTree }) {
-  const order = tree.sections.map((s) => s.heading || s.kind).join(" → ");
+  const order = tree.sections.map((s) => s.heading || s.kind);
+  const dateExamples = tree.sections
+    .flatMap((section) => section.entries)
+    .map((entry) => [entry.start_date, entry.end_date].filter(Boolean).join(" - "))
+    .filter(Boolean)
+    .slice(0, 6);
   return (
     <Shell title="Formatting pass" description="Fix dates, dashes, headers, and section order before editing content.">
-      <p className="text-sm">
-        Current order: <span className="font-medium text-foreground">{order || "not parsed yet"}</span>
-      </p>
+      <div className="space-y-4">
+        <div>
+          <p className="mb-2 text-sm font-medium text-foreground">Section order preview</p>
+          {order.length ? (
+            <ol className="grid gap-2 sm:grid-cols-2">
+              {order.map((heading, index) => (
+                <li key={heading + index} className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                  {index + 1}. {heading}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-muted-foreground">No parsed sections yet. Upload first.</p>
+          )}
+        </div>
+        <div>
+          <p className="mb-2 text-sm font-medium text-foreground">Date format spot-check</p>
+          {dateExamples.length ? (
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {dateExamples.map((item, idx) => (
+                <li key={idx}>- {item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No date ranges found yet.</p>
+          )}
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -209,6 +247,15 @@ function EntryStep({
     await onReload();
   }
 
+  async function applyAiSuggestion(text: string) {
+    await fetch(`/api/entries/${entry.id}/bullets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, revision_id: tree.revision.id, source: "ai" }),
+    });
+    await onReload();
+  }
+
   const entryComments = useMemo(
     () => tree.comments.filter((c) => c.entry_id === entry.id || entry.bullets.some((b) => b.id === c.bullet_id)),
     [entry.bullets, entry.id, tree.comments],
@@ -250,9 +297,49 @@ function EntryStep({
       )}
 
       <div className="mt-6 border-t border-border/60 pt-4">
-        <AiPanel revisionId={tree.revision.id} entryId={entry.id} />
+        <AiPanel revisionId={tree.revision.id} entryId={entry.id} onApplySuggestedText={applyAiSuggestion} />
       </div>
+      <EditHistory bullets={entry.bullets} />
     </Shell>
+  );
+}
+
+function EditHistory({ bullets }: { bullets: Entry["bullets"] }) {
+  const edits = useMemo(
+    () =>
+      bullets
+        .flatMap((bullet, bulletIndex) =>
+          (bullet.edits ?? []).map((edit) => ({
+            ...edit,
+            bulletIndex,
+          })),
+        )
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 8),
+    [bullets],
+  );
+
+  if (!edits.length) return null;
+
+  return (
+    <div className="mt-6 rounded-xl border border-border/60 bg-muted/20 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent edit history</p>
+      <ul className="mt-2 space-y-2">
+        {edits.map((edit) => (
+          <li key={edit.id} className="rounded-lg border border-border/60 bg-background p-2 text-xs">
+            <p className="mb-1 text-muted-foreground">
+              Bullet {edit.bulletIndex + 1} · {edit.source} · {new Date(edit.created_at).toLocaleString()}
+            </p>
+            <p className="text-foreground">
+              <span className="font-medium">Before:</span> {edit.before_text}
+            </p>
+            <p className="text-foreground">
+              <span className="font-medium">After:</span> {edit.after_text}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -291,13 +378,38 @@ function ExportStep({ tree, revisionNumber }: { tree: RevisionTree; revisionNumb
         <Button variant="outline" onClick={() => void download("pdf")}>Download PDF</Button>
         <Button
           variant="outline"
-          onClick={() =>
+          onClick={() => {
+            void fetch(`/api/revisions/${tree.revision.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "in_progress" }),
+            });
+          }}
+        >
+          Mark in progress
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            void fetch(`/api/revisions/${tree.revision.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "returned" }),
+            });
+          }}
+        >
+          Mark returned
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            void
             fetch(`/api/revisions/${tree.revision.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: "sent" }),
-            })
-          }
+            });
+          }}
         >
           Mark sent to client
         </Button>

@@ -4,11 +4,27 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-export function AiPanel({ revisionId, entryId }: { revisionId: string; entryId: string }) {
+type AiResult = {
+  issues: string[];
+  open_questions: string[];
+  suggested_text: string;
+  reviewer_comment: string;
+};
+
+export function AiPanel({
+  revisionId,
+  entryId,
+  onApplySuggestedText,
+}: {
+  revisionId: string;
+  entryId: string;
+  onApplySuggestedText?: (text: string) => Promise<void>;
+}) {
   const [trigger, setTrigger] = useState<"review" | "apply" | "custom">("review");
   const [extra, setExtra] = useState("");
-  const [result, setResult] = useState<string>("");
+  const [result, setResult] = useState<AiResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
   async function run() {
     setBusy(true);
     const res = await fetch("/api/ai", {
@@ -17,8 +33,15 @@ export function AiPanel({ revisionId, entryId }: { revisionId: string; entryId: 
       body: JSON.stringify({ revision_id: revisionId, entry_id: entryId, trigger, extra_prompt: extra }),
     });
     const json = await res.json();
-    setResult(JSON.stringify(json.result, null, 2));
+    setResult(json.result as AiResult);
     setBusy(false);
+  }
+
+  async function applySuggestion() {
+    if (!result?.suggested_text?.trim() || !onApplySuggestedText) return;
+    setApplying(true);
+    await onApplySuggestedText(result.suggested_text);
+    setApplying(false);
   }
   return (
     <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
@@ -36,9 +59,14 @@ export function AiPanel({ revisionId, entryId }: { revisionId: string; entryId: 
         <Button size="sm" onClick={run} disabled={busy}>
           {busy ? "Working…" : "Run AI"}
         </Button>
+        {onApplySuggestedText ? (
+          <Button size="sm" variant="outline" onClick={() => void applySuggestion()} disabled={applying || !result?.suggested_text?.trim()}>
+            {applying ? "Applying…" : "Apply suggestion"}
+          </Button>
+        ) : null}
       </div>
       <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Optional extra instruction" rows={2} className="min-h-0 bg-background text-sm" />
-      {result ? <pre className="max-h-48 overflow-auto rounded-lg bg-background p-3 text-xs">{result}</pre> : null}
+      {result ? <pre className="max-h-48 overflow-auto rounded-lg bg-background p-3 text-xs">{JSON.stringify(result, null, 2)}</pre> : null}
     </div>
   );
 }

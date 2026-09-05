@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import { analyzeBullet } from "./bullet-flags";
+import { extractPdfText } from "./pdf-text";
 import { buildContactReferenceSnapshot, buildEntryReferenceSnapshot } from "./reference-snapshot";
-import type { ParsedResume, RevisionTree } from "./types";
+import type { ParsedResume, RevisionTree, StepCheckStatus } from "./types";
 import { revisionKind } from "./workflow";
 import { createServerSupabase } from "./supabase/server";
 
@@ -35,8 +36,9 @@ export async function createResume(input: {
   seniority?: string;
   assigneeId?: string;
 }) {
-  const { supabase, user } = await currentProfile();
+  const { supabase, user, profile } = await currentProfile();
   if (!user) throw new Error("Unauthorized");
+  const assigneeId = profile?.role === "owner" ? input.assigneeId || user.id : user.id;
   const { data: candidate, error: cErr } = await supabase
     .from("candidates")
     .insert({
@@ -56,7 +58,7 @@ export async function createResume(input: {
     .select()
     .single();
   if (rErr) throw rErr;
-  await supabase.from("resume_assignments").insert({ resume_id: resume.id, user_id: input.assigneeId || user.id });
+  await supabase.from("resume_assignments").insert({ resume_id: resume.id, user_id: assigneeId });
   const { data: revision, error: vErr } = await supabase
     .from("revisions")
     .insert({
@@ -80,6 +82,8 @@ async function seedEmptySections(revisionId: string) {
     ["project", "Projects", "project"],
     ["education", "Education", "school"],
     ["skills", "Technical Skills", "skill_group"],
+    ["extracurricular", "Extracurricular", "extra"],
+    ["patents", "Patents / Publications", "patent"],
   ] as const;
   for (const [i, [kind, heading, entryKind]] of kinds.entries()) {
     const { data: section } = await supabase
@@ -87,7 +91,7 @@ async function seedEmptySections(revisionId: string) {
       .insert({ revision_id: revisionId, kind, position: i, heading })
       .select()
       .single();
-    if (section) {
+    if (section && kind !== "extracurricular" && kind !== "patents") {
       await supabase.from("entries").insert({
         section_id: section.id,
         kind: entryKind,
@@ -110,8 +114,16 @@ export async function getResume(id: string) {
 }
 
 export async function assignResume(resumeId: string, userId: string) {
-  const { supabase } = await currentProfile();
+  const { supabase, profile } = await currentProfile();
+  if (profile?.role !== "owner") throw new Error("Only owners can assign resumes.");
   const { error } = await supabase.from("resume_assignments").upsert({ resume_id: resumeId, user_id: userId });
+  if (error) throw error;
+}
+
+export async function updateResume(resumeId: string, patch: { title?: string; status?: "active" | "paused" | "done" }) {
+  const { supabase, profile } = await currentProfile();
+  if (profile?.role !== "owner") throw new Error("Only owners can update resumes.");
+  const { error } = await supabase.from("resumes").update(patch).eq("id", resumeId);
   if (error) throw error;
 }
 
@@ -126,11 +138,12 @@ export async function getRevisionTree(revisionId: string): Promise<RevisionTree>
   const { supabase } = await currentProfile();
   const { data: revision, error } = await supabase.from("revisions").select("*").eq("id", revisionId).single();
   if (error) throw error;
-  const [{ data: contact }, { data: sections }, { data: files }, { data: comments }] = await Promise.all([
+  const [{ data: contact }, { data: sections }, { data: files }, { data: comments }, { data: checks }] = await Promise.all([
     supabase.from("contacts").select("*").eq("revision_id", revisionId).maybeSingle(),
     supabase.from("sections").select("*").eq("revision_id", revisionId).order("position"),
     supabase.from("files").select("*").eq("revision_id", revisionId),
     supabase.from("comments").select("*").eq("revision_id", revisionId),
+    supabase.from("step_checks").select("*").eq("revision_id", revisionId),
   ]);
   const sectionRows = sections ?? [];
   const sectionIds = sectionRows.map((s) => s.id);
@@ -143,6 +156,21 @@ export async function getRevisionTree(revisionId: string): Promise<RevisionTree>
     ? await supabase.from("bullets").select("*").in("entry_id", entryIds).order("position")
     : { data: [] };
   const bulletRows = bullets ?? [];
+  const { data: edits } = bulletRows.length
+    ? await supabase
+        .from("edits")
+        .select("*")
+        .eq("revision_id", revisionId)
+        .in(
+          "bullet_id",
+          bulletRows.map((b) => b.id),
+        )
+        .order("created_at", { ascending: false })
+    : { data: [] };
+  const editsByBullet = new Map<string, unknown[]>();
+  for (const edit of edits ?? []) {
+    editsByBullet.set(edit.bullet_id, [...(editsByBullet.get(edit.bullet_id) ?? []), edit]);
+  }
   const { data: techs } = bulletRows.length
     ? await supabase.from("bullet_technologies").select("*").in(
         "bullet_id",
@@ -162,7 +190,7 @@ export async function getRevisionTree(revisionId: string): Promise<RevisionTree>
         ...entry,
         bullets: bulletRows
           .filter((b) => b.entry_id === entry.id)
-          .map((b) => ({ ...b, technologies: techMap.get(b.id) ?? [] })),
+          .map((b) => ({ ...b, technologies: techMap.get(b.id) ?? [], edits: editsByBullet.get(b.id) ?? [] })),
         comments: commentRows.filter((c) => c.entry_id === entry.id || bulletRows.some((b) => b.entry_id === entry.id && b.id === c.bullet_id)),
       })),
   }));
@@ -181,6 +209,7 @@ export async function getRevisionTree(revisionId: string): Promise<RevisionTree>
     sections: treeSections,
     files: files ?? [],
     comments: commentRows,
+    checks: checks ?? [],
   };
 }
 
@@ -245,7 +274,7 @@ export async function getReferenceText(resumeId: string): Promise<{ text: string
       const mammoth = await import("mammoth");
       text = (await mammoth.extractRawText({ buffer })).value;
     } else if (file.filename.toLowerCase().endsWith(".pdf")) {
-      text = buffer.toString("latin1").replace(/[^\n\r\t\x20-\x7E]/g, " ");
+      text = await extractPdfText(buffer);
     } else {
       text = buffer.toString("utf8");
     }
@@ -260,13 +289,14 @@ export async function syncEntryBullets(
   lines: string[],
   userId: string | undefined,
   revisionId: string,
+  source: "human" | "ai" = "human",
 ) {
   const { supabase } = await currentProfile();
   const { data: existing } = await supabase.from("bullets").select("*").eq("entry_id", entryId).order("position");
   const bullets = existing ?? [];
   for (let i = 0; i < lines.length; i++) {
     if (bullets[i]) {
-      await saveBullet(bullets[i].id, lines[i], userId, revisionId);
+      await saveBullet(bullets[i].id, lines[i], userId, revisionId, source);
     } else {
       await addBullet(entryId, lines[i]);
     }
@@ -299,7 +329,13 @@ export async function addEntry(sectionId: string, kind: string, position: number
   return data;
 }
 
-export async function saveBullet(bulletId: string, current_text: string, userId: string | undefined, revisionId: string) {
+export async function saveBullet(
+  bulletId: string,
+  current_text: string,
+  userId: string | undefined,
+  revisionId: string,
+  source: "human" | "ai" = "human",
+) {
   const { supabase } = await currentProfile();
   const { data: before } = await supabase.from("bullets").select("*").eq("id", bulletId).single();
   if (!before) throw new Error("Bullet not found");
@@ -312,7 +348,7 @@ export async function saveBullet(bulletId: string, current_text: string, userId:
       revision_id: revisionId,
       before_text: before.current_text,
       after_text: current_text,
-      source: "human",
+      source,
       created_by: userId ?? null,
     });
   }
@@ -374,6 +410,27 @@ export async function setCurrentStep(revisionId: string, current_step: string) {
 export async function setRevisionStatus(revisionId: string, status: string) {
   const { supabase } = await currentProfile();
   await supabase.from("revisions").update({ status }).eq("id", revisionId);
+}
+
+export async function saveStepCheck(input: {
+  revisionId: string;
+  stepId: string;
+  taskKey: string;
+  status: StepCheckStatus;
+  note?: string;
+  updatedBy: string | null;
+}) {
+  const { supabase } = await currentProfile();
+  const { error } = await supabase.from("step_checks").upsert({
+    revision_id: input.revisionId,
+    step_id: input.stepId,
+    task_key: input.taskKey,
+    status: input.status,
+    note: input.note ?? "",
+    updated_by: input.updatedBy,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
 
 export async function applyParsedResume(revisionId: string, parsed: ParsedResume) {

@@ -34,7 +34,17 @@ export default async function DashboardPage() {
           resumes.map((resume) => {
             const candidate = Array.isArray(resume.candidates) ? resume.candidates[0] : resume.candidates;
             const revisions = (resume.revisions ?? []) as { id: string; revision_number: number; status: string; current_step: string }[];
+            const assignments = (resume.resume_assignments ?? []) as {
+              user_id: string;
+              profiles?: { display_name?: string; role?: string }[];
+            }[];
             const latest = [...revisions].sort((a, b) => b.revision_number - a.revision_number)[0];
+            const assigneeNames = assignments
+              .map((a) => {
+                const profile = a.profiles?.[0];
+                return profile?.display_name || a.user_id;
+              })
+              .filter(Boolean);
             return (
               <Card key={resume.id} className="shadow-sm transition-shadow hover:shadow-md">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
@@ -47,6 +57,8 @@ export default async function DashboardPage() {
                 <CardContent className="flex flex-wrap items-center gap-4 text-sm">
                   <span className="rounded-md bg-muted px-2 py-0.5 text-xs">Rev {resume.current_revision_number}</span>
                   {latest ? <span className="text-muted-foreground">Step: {latest.current_step}</span> : null}
+                  {latest ? <span className="text-muted-foreground">Revision status: {latest.status}</span> : null}
+                  <span className="text-muted-foreground">Assignee: {assigneeNames.join(", ") || "Unassigned"}</span>
                   <Link className="font-medium text-primary underline-offset-4 hover:underline" href={`/resumes/${resume.id}`}>
                     Overview
                   </Link>

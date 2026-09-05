@@ -6,6 +6,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   const body = await request.json();
-  await saveBullet(id, body.current_text, user.id, body.revision_id);
+  await saveBullet(id, body.current_text, user.id, body.revision_id, body.source === "ai" ? "ai" : "human");
   return NextResponse.json({ ok: true });
 }
