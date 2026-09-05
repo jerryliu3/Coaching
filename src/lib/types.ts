@@ -22,6 +22,7 @@ export type FileKind = "original_upload" | "client_return" | "export";
 export type CommentStatus = "open" | "resolved" | "deleted";
 export type XyzPattern = "xyz" | "yxz" | "other" | "unknown";
 export type AiTrigger = "review" | "apply" | "custom";
+export type StepCheckStatus = "yes" | "needs_edit" | "skip";
 
 export type Contact = {
   revision_id: string;
@@ -58,6 +59,19 @@ export type Bullet = {
   has_justification: boolean;
   xyz_pattern: XyzPattern;
   technologies: string[];
+  edits?: EditRecord[];
+};
+
+export type EditRecord = {
+  id: string;
+  bullet_id: string;
+  revision_id: string;
+  before_text: string;
+  after_text: string;
+  source: "human" | "ai";
+  comment_template: string | null;
+  created_by: string | null;
+  created_at: string;
 };
 
 export type Comment = {
@@ -138,6 +152,18 @@ export type RevisionTree = {
   sections: Section[];
   files: ResumeFile[];
   comments: Comment[];
+  checks?: StepCheck[];
+};
+
+export type StepCheck = {
+  id: string;
+  revision_id: string;
+  step_id: string;
+  task_key: string;
+  status: StepCheckStatus;
+  note: string;
+  updated_by: string | null;
+  updated_at: string;
 };
 
 export type WorkflowStep = {

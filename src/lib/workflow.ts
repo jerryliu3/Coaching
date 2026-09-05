@@ -48,12 +48,12 @@ export function buildSteps(tree: RevisionTree): WorkflowStep[] {
   steps.push({ id: "skills", kind: "skills", label: skillsLabel });
 
   const extras = tree.sections.find((s) => s.kind === "extracurricular");
-  if (extras && extras.entries.length > 0) {
-    steps.push(...entrySteps("extracurricular", extras.entries, "Extracurricular"));
+  if (extras) {
+    steps.push(...entrySteps("extracurricular", extras.entries ?? [], "Extracurricular"));
   }
   const patents = tree.sections.find((s) => s.kind === "patents");
-  if (patents && patents.entries.length > 0) {
-    steps.push(...entrySteps("patents", patents.entries, "Patents"));
+  if (patents) {
+    steps.push(...entrySteps("patents", patents.entries ?? [], "Patents"));
   }
 
   steps.push({ id: "export", kind: "export", label: "Export" });

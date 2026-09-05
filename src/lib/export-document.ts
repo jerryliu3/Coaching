@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { CommentRangeEnd, CommentRangeStart, CommentReference, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import type { RevisionTree } from "./types";
 
@@ -23,7 +23,8 @@ export async function exportDocx(tree: RevisionTree) {
     new Paragraph({ children: [new TextRun({ text: contactLine(tree), size: 20 })] }),
   ];
 
-  const comments: string[] = [];
+  const commentsForDocx: { id: number; body: string; context: string }[] = [];
+  let commentId = 0;
   for (const section of tree.sections) {
     if (section.kind === "contact") continue;
     children.push(
@@ -64,20 +65,60 @@ export async function exportDocx(tree: RevisionTree) {
         );
       }
       for (const bullet of entry.bullets) {
-        children.push(new Paragraph({ text: bullet.current_text, bullet: { level: 0 } }));
+        const relatedComments = entry.comments
+          .concat(tree.comments)
+          .filter((c) => c.status === "open" && c.bullet_id === bullet.id);
+        if (!relatedComments.length) {
+          children.push(new Paragraph({ text: bullet.current_text, bullet: { level: 0 } }));
+          continue;
+        }
+        const anchorComment = relatedComments[0];
+        commentsForDocx.push({
+          id: commentId,
+          body: anchorComment.body,
+          context: left || entry.org_name || "Entry",
+        });
+        children.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            children: [
+              new CommentRangeStart(commentId),
+              new TextRun(bullet.current_text),
+              new CommentRangeEnd(commentId),
+              new CommentReference(commentId),
+            ],
+          }),
+        );
+        commentId += 1;
       }
-      for (const comment of entry.comments.concat(tree.comments).filter((c) => c.status === "open" && (c.entry_id === entry.id || c.bullet_id && entry.bullets.some((b) => b.id === c.bullet_id)))) {
-        comments.push(`${left}: ${comment.body}`);
+      for (const comment of entry.comments.concat(tree.comments).filter((c) => c.status === "open" && c.entry_id === entry.id && c.bullet_id == null)) {
+        commentsForDocx.push({
+          id: commentId,
+          body: comment.body,
+          context: left || entry.org_name || "Entry",
+        });
+        commentId += 1;
       }
     }
   }
 
-  if (comments.length) {
+  if (commentsForDocx.length) {
     children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Reviewer comments")] }));
-    for (const c of comments) children.push(new Paragraph({ text: c, bullet: { level: 0 } }));
+    for (const c of commentsForDocx) children.push(new Paragraph({ text: `${c.context}: ${c.body}`, bullet: { level: 0 } }));
   }
 
-  const doc = new Document({ sections: [{ children }] });
+  const doc = new Document({
+    comments: {
+      children: commentsForDocx.map((c) => ({
+        id: c.id,
+        author: "Reviewer",
+        initials: "RV",
+        date: new Date(),
+        children: [new Paragraph({ children: [new TextRun(c.body)] })],
+      })),
+    },
+    sections: [{ children }],
+  });
   return Packer.toBuffer(doc);
 }
 

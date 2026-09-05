@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mammoth from "mammoth";
 import { applyParsedResume, currentProfile, upsertFileRecord } from "@/lib/data";
 import { parseResumeText } from "@/lib/parse-resume";
+import { extractPdfText } from "@/lib/pdf-text";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   if (file.name.toLowerCase().endsWith(".docx") || file.type.includes("word")) {
     text = (await mammoth.extractRawText({ buffer })).value;
   } else if (file.name.toLowerCase().endsWith(".pdf")) {
-    text = buffer.toString("latin1").replace(/[^\n\r\t\x20-\x7E]/g, " ");
+    text = await extractPdfText(buffer);
   } else {
     text = buffer.toString("utf8");
   }
